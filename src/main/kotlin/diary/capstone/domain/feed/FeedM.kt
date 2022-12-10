@@ -13,30 +13,28 @@ data class FeedM(
     var writer: Long,
 
     var content: String,
-    var images: MutableList<FileM> = mutableListOf(),
+    var images: MutableList<ImageDto> = mutableListOf(),
 
     var likedUsers: MutableList<Long> = mutableListOf(),
 
-    var comments: MutableList<CommentM> = mutableListOf(),
+    var comments: MutableList<CommentDto> = mutableListOf(),
 
     var showScope: String,
     var createTime: LocalDateTime
-) {
+)
 
-}
-
-data class FileM(
+data class ImageDto(
     var originalName: String,
     var source: String,
     var description: String
 )
 
-data class CommentM(
+data class CommentDto(
     var writer: Long,
 
     var content: String,
     var layer: Int = 1,
-    var children: MutableList<CommentM> = mutableListOf(),
+    var children: MutableList<CommentDto> = mutableListOf(),
 
     var createTime: LocalDateTime
 )

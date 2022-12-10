@@ -30,11 +30,9 @@ class Feed(
     @OneToMany(mappedBy = "feedFile", cascade = [CascadeType.ALL], orphanRemoval = true)
     var files: MutableList<File> = mutableListOf(),
 
-    @BatchSize(size = FEED_PAGE_SIZE)
     @OneToMany(mappedBy = "feed", cascade = [CascadeType.ALL], orphanRemoval = true)
     var comments: MutableList<Comment> = mutableListOf(),
 
-    @BatchSize(size = FEED_PAGE_SIZE)
     @OneToMany(mappedBy = "feed", cascade = [CascadeType.ALL], orphanRemoval = true)
     var likes: MutableList<FeedLike> = mutableListOf(),
 
@@ -48,10 +46,6 @@ class Feed(
     ) {
         content?.let { this.content = content }
         showScope?.let { this.showScope = showScope }
-    }
-    fun updateFiles(files: MutableList<File>) {
-        this.files.clear()
-        this.files.addAll(files)
     }
 }
 

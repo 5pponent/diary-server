@@ -1,6 +1,7 @@
 package diary.capstone.auth
 
 import diary.capstone.config.TOKEN_VALID_TIME
+import diary.capstone.domain.user.QUserRepository
 import diary.capstone.domain.user.User
 import diary.capstone.domain.user.UserRepository
 import io.jsonwebtoken.Header
@@ -15,7 +16,7 @@ import javax.servlet.http.HttpServletRequest
 import javax.xml.bind.DatatypeConverter
 
 @Component
-class JwtProvider(private val userRepository: UserRepository) {
+class JwtProvider(private val qUserRepository: QUserRepository) {
 
     @Value("\${jwt.secret-key}")
     private lateinit var secretKey: String
@@ -48,7 +49,7 @@ class JwtProvider(private val userRepository: UserRepository) {
             .body.subject
 
     fun getUser(token: String): User? =
-        userRepository.findByEmail(getSubject(token))
+        qUserRepository.findByEmail(getSubject(token))
 
     // 토큰의 유효성 + 만료일자 확인, 예외는 ExceptionHandler 에서 처리
     fun validateToken(token: String): Boolean =

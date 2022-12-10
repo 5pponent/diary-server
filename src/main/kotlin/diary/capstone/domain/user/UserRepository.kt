@@ -5,7 +5,6 @@ import com.querydsl.jpa.impl.JPAQueryFactory
 import diary.capstone.domain.user.QFollow.follow
 import diary.capstone.domain.user.QUser.user
 import diary.capstone.util.getPagedObject
-import diary.capstone.util.logger
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
@@ -35,8 +34,34 @@ interface UserRepository: JpaRepository<User, Long> {
 @Repository
 class QUserRepository(private val jpaQueryFactory: JPAQueryFactory) {
 
-    private fun getFollowCount(expr: Predicate): Long = jpaQueryFactory
-        .select(follow.count()).from(follow).where(expr).fetchOne()!!
+    fun findByEmail(email: String): User? = jpaQueryFactory.selectFrom(user)
+        .leftJoin(user.profileImage).fetchJoin()
+        .leftJoin(user.occupation).fetchJoin()
+        .where(user.email.eq(email))
+        .fetchOne()
+
+    fun getIsFollowed(userId: Long, targetUserId: Long): Boolean = jpaQueryFactory.selectFrom(follow)
+        .where(follow.user.id.eq(userId), follow.target.id.eq(targetUserId))
+        .fetchOne()?.let { true } ?: false
+
+    /**
+     * @param userId 대상 유저 ID
+     * @param targetUserIds 대상 유저가 팔로우 했는지를 확인하기 위한 유저 ID 리스트
+     */
+    fun getUsersAndIsFollowed(userId: Long, targetUserIds: List<Long>): List<UserSimpleResponse> {
+        val users = jpaQueryFactory
+            .selectFrom(user)
+            .leftJoin(user.profileImage).fetchJoin()
+            .where(user.id.`in`(targetUserIds))
+            .fetch()
+        val follows = jpaQueryFactory
+            .select(follow.target.id)
+            .from(follow)
+            .where(follow.user.id.eq(userId).and(follow.target.id.`in`(targetUserIds)))
+            .fetch()
+        val followedMap = targetUserIds.associateWith { follows.contains(it) }
+        return users.map { UserSimpleResponse(it, followedMap[it.id]!!) }
+    }
 
     /**
      * JOIN FETCH: target, target.profileImage
@@ -121,4 +146,7 @@ class QUserRepository(private val jpaQueryFactory: JPAQueryFactory) {
 
         return UserDetailResponse(findUser, loginUser, followingCount, followerCount)
     }
+
+    private fun getFollowCount(expr: Predicate): Long = jpaQueryFactory
+        .select(follow.count()).from(follow).where(expr).fetchOne()!!
 }

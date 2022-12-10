@@ -57,6 +57,14 @@ internal class UserServiceTest {
         userTestResult(result)
     }
 
+    @Test @DisplayName("유저 Id 목록을 주면 UserSimpleResponse 목록(isFollowed 포함)을 반환")
+    fun isFollowing() {
+        val userId = 6L
+        val writersIds = listOf(1L, 2L, 3L, 4L, 5L, 7L, 10L)
+        val users = qUserRepository.getUsersAndIsFollowed(userId, writersIds)
+        users.forEach { println(it) }
+    }
+
     @Test @DisplayName("해당 유저의 팔로잉 유저 페이징 목록")
     fun getFollowing() {
         val loginUser = userService.getUserById(1L)

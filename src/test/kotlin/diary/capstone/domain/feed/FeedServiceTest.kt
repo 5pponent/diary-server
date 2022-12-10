@@ -25,8 +25,6 @@ internal class FeedServiceTest {
     @Autowired lateinit var userService: UserService
     @Autowired lateinit var qFeedRepository: QFeedRepository
     @Autowired lateinit var jpaQueryFactory: JPAQueryFactory
-    @Autowired lateinit var feedRepository: FeedRepository
-    @Autowired lateinit var feedRepositoryM: FeedRepositoryM
 
     /**
      * - files, likes, comments 가 해당 엔티티.feed_id IN (result 피드 id 목록 pageSize 만큼) Batch 쿼리로 처리
@@ -44,7 +42,6 @@ internal class FeedServiceTest {
             println("likeCount: ${it.likeCount}")
             println("isLiked: ${it.isLiked}")
             println("commentCount: ${it.commentCount}")
-            println("isFollowed = ${it.isFollowed}")
         }
     }
 
@@ -61,7 +58,7 @@ internal class FeedServiceTest {
         println("totalElements: " + commentList.totalElements)
         commentList.content.forEach {
             println("Comment (${it.id}) =====================================================")
-            println("${it.content}")
+            println(it.content)
             println("childCount = ${it.childCount}")
             println("isFollowed = ${it.isFollowed}")
             println("isLiked = ${it.isLiked}")
@@ -79,13 +76,12 @@ internal class FeedServiceTest {
         feedTestResult(result)
     }
 
-    @Test @DisplayName("전체 공개 피드 모두 조회")
+    @Test @DisplayName("전체 공개 피드 모두 조회 - NoOffset")
     fun getFeedsAll() {
-        val loginUser = userService.getUserById(1L)
-        val pageable = PageRequest.of(0, 10)
-        val result = qFeedRepository.findFeedsByShowScope(pageable, SHOW_ALL, loginUser)
-
-        feedTestResult(result)
+        val loginUser = userService.getUserById(6L)
+        val result = qFeedRepository.findFeedsByShowScope(SHOW_ALL, loginUser)
+        println("${result.size} rows paged")
+        result.forEach { println("${it.id} | ${it.writer}") }
     }
 
     @Test @DisplayName("피드 검색")
@@ -146,59 +142,5 @@ internal class FeedServiceTest {
 
         val result = qFeedRepository.getCommentLikeCount(commentId)
         println("$commentId LikeCount: $result")
-    }
-
-    @Test
-    fun feedMigration() {
-        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-
-        feedRepositoryM.deleteAll()
-        val feeds = feedRepository.findAll()
-        feeds.forEach { feed ->
-            feedRepositoryM.save(
-                FeedM(
-                    id = ObjectId(Timestamp.valueOf(LocalDateTime.parse(feed.createTime, formatter))),
-                    writer = feed.writer.id!!,
-                    content = feed.content,
-                    likedUsers = feed.likes.map { it.user.id!! }.toMutableList(),
-                    comments = feed.comments.map { c1 ->
-                        CommentM(
-                            c1.writer.id!!,
-                            c1.content,
-                            c1.layer,
-                            c1.children.map { c2 -> CommentM(
-                                c2.writer.id!!,
-                                c2.content,
-                                c2.layer,
-                                c2.children.map { c3 -> CommentM(
-                                    c3.writer.id!!,
-                                    c3.content,
-                                    c3.layer,
-                                    c3.children.map { c4 -> CommentM(
-                                        c4.writer.id!!,
-                                        c4.content,
-                                        c4.layer,
-                                        c4.children.map { c5 -> CommentM(
-                                            c5.writer.id!!,
-                                            c5.content,
-                                            c5.layer,
-                                            mutableListOf(),
-                                            LocalDateTime.parse(c5.createTime, formatter)
-                                        ) }.toMutableList(),
-                                        LocalDateTime.parse(c4.createTime, formatter)
-                                    ) }.toMutableList(),
-                                    LocalDateTime.parse(c3.createTime, formatter)
-                                ) }.toMutableList(),
-                                LocalDateTime.parse(c2.createTime, formatter)
-                            ) }.toMutableList(),
-                            LocalDateTime.parse(c1.createTime, formatter)
-                        )
-                    }.toMutableList(),
-                    images = feed.files.map { FileM(it.originalName, it.source, it.description) }.toMutableList(),
-                    showScope = feed.showScope,
-                    createTime = LocalDateTime.parse(feed.createTime, formatter),
-                )
-            )
-        }
     }
 }

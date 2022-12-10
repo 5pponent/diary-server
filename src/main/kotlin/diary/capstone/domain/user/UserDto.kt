@@ -104,6 +104,12 @@ data class UserSimpleResponse(
         isFollowed = me.following
             .any { it.target.id == user.id }
     )
+    constructor(user: User, isFollowed: Boolean): this(
+        id = user.id!!,
+        name = user.name,
+        image = user.profileImage?.let { ProfileImageFileResponse(it) },
+        isFollowed = isFollowed
+    )
 }
 
 data class UserDetailResponse(
@@ -118,19 +124,6 @@ data class UserDetailResponse(
     var followerCount: Int,
     var isFollowed: Boolean
 ) {
-    constructor(user: User, me: User): this(
-        id = user.id!!,
-        image = user.profileImage?.let { ProfileImageFileResponse(it) },
-        name = user.name,
-        message = user.message,
-        email = user.email,
-        occupation = user.occupation?.name,
-        interests = user.getInterests(),
-        followingCount = user.following.count(),
-        followerCount = user.follower.count(),
-        isFollowed = me.following
-            .any { it.target.id == user.id }
-    )
     constructor(user: User, me: User, followingCount: Int, followerCount: Int): this(
         id = user.id!!,
         image = user.profileImage?.let { ProfileImageFileResponse(it) },
@@ -145,6 +138,10 @@ data class UserDetailResponse(
             .any { it.target.id == user.id }
     )
 }
+
+data class IsFollowedDto(
+    var writers: Pair<UserSimpleResponse, Boolean>
+)
 
 data class UserPagedResponse(
     var currentPage: Int,

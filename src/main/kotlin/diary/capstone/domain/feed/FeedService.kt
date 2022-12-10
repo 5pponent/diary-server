@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile
 @Transactional
 class FeedService(
     private val feedRepository: FeedRepository,
+    private val qFeedRepository: QFeedRepository,
     private val userService: UserService,
     private val fileService: FileService,
     private val noticeService: NoticeService
@@ -60,50 +61,17 @@ class FeedService(
             it
         }
 
+    // 전체 공개 피드 조회
+    @Transactional(readOnly = true)
+    fun getShowAllFeeds(lastFeedId: Long?, loginUser: User) =
+        qFeedRepository.findFeedsByShowScope(SHOW_ALL, loginUser, lastFeedId)
+
     // 피드 목록 검색 (페이징)
     @Transactional(readOnly = true)
-    fun getFeeds(pageable: Pageable, userId: Long?, feedLineId: Long?, loginUser: User): Page<Feed> {
-        // 특정 유저의 피드만 조회 (프로필 통해 조회)
-        userId?.let { userId ->
-            // 로그인 유저가 해당 유저일 경우 모든 피드 조회
-            if (loginUser.id == userId)
-                return getPagedObject(pageable,
-                    loginUser.feeds.sortedByDescending { it.id }
-                )
-
-            val user = userService.getUserById(userId)
-
-            return getPagedObject(pageable,
-                user.feeds
-                    .filterNotShowFollowersFeed(
-                        // 피드 작성자를 팔로우 했다면 팔로워 공개 피드를 보여줌
-                        !user.follower.map { it.user.id }.contains(loginUser.id)
-                    )
-                    .filterNotShowMeFeed()
-                    .sortedByDescending { it.id }
-            )
-        }
-        // 피드라인으로 조회
-        feedLineId?.let {
-            val feedLine = loginUser.feedLines.find { feedLine ->  feedLine.id == it }
-            // TODO 피드라인으로 피드 목록 조회 로직
-        }
-
-        // 모든 피드 조회
-        return feedRepository.findByShowScope(pageable, SHOW_ALL)
-    }
-
-    // 피드 내용 또는 파일 설명으로 피드 조회
-    @Transactional(readOnly = true)
-    fun searchFeedsByUserAndKeyword(pageable: Pageable, userId: Long, keyword: String): Page<Feed> =
-        getPagedObject(pageable,
-            userService.getUserById(userId).feeds
-                .filter { feed ->
-                    feed.content.contains(keyword) ||
-                            feed.files.any { it.description.contains(keyword) }
-                }
-                .sortedByDescending { it.id }
-        )
+    fun getFeeds(pageable: Pageable, userId: Long, keyword: String?, loginUser: User): Page<FeedResponse> =
+        keyword?.let {
+            qFeedRepository.findFeedsByUserIdAndKeyword(pageable, userId, keyword, loginUser)
+        } ?: qFeedRepository.findFeedsByUserId(pageable, userId, loginUser)
 
     // 피드 하나의 상세 정보
     @Transactional(readOnly = true)

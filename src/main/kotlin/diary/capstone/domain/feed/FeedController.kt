@@ -7,16 +7,13 @@ import diary.capstone.domain.feed.comment.CommentRequestForm
 import diary.capstone.domain.feed.comment.CommentResponse
 import diary.capstone.domain.user.User
 import diary.capstone.domain.user.UserSimpleResponse
-import diary.capstone.util.logger
 import io.swagger.annotations.ApiOperation
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
 import org.springframework.data.web.PageableDefault
 import org.springframework.web.bind.annotation.*
-import org.springframework.web.multipart.MultipartFile
 import springfox.documentation.annotations.ApiIgnore
 import javax.validation.Valid
-import kotlin.io.path.Path
 
 @ApiOperation("피드 관련 API")
 @Auth
@@ -35,17 +32,22 @@ class FeedController(private val feedService: FeedService) {
 
     @ApiOperation(
         value = "피드 목록 조회",
-        notes = "각 파라미터는 한 요청 시 하나만 요청 가능\n " +
-                "* userid: 해당 유저가 작성한 피드 목록 조회\n " +
-                "* feedlineid: 해당 피드라인으로 피드 목록 조회\n "
+        notes = "* userid: 해당 유저가 작성한 피드 목록 조회\n " +
+                "* keyword?: 해당 키워드로 피드 목록 조회\n "
     )
     @GetMapping
     fun getFeeds(
-        @PageableDefault(sort = ["id"], direction = Sort.Direction.DESC, size = FEED_PAGE_SIZE) pageable: Pageable,
-        @RequestParam(name = "userid", required = false) userId: Long?,
-        @RequestParam(name = "feedlineid", required = false) feedLineId: Long?,
+        @PageableDefault(sort = ["id"], size = FEED_PAGE_SIZE) pageable: Pageable,
+        @RequestParam(name = "userid") userId: Long,
+        @RequestParam(name = "keyword", required = false) keyword: String?,
         @ApiIgnore user: User
-    ) = FeedPagedResponse(feedService.getFeeds(pageable, userId, feedLineId, user), user)
+    ) = FeedPagedResponse(feedService.getFeeds(pageable, userId, keyword, user))
+
+    @GetMapping("/all")
+    fun getShowAllFeeds(
+        @RequestParam(name = "lastFeedId", required = false) lastFeedId: Long?,
+        @ApiIgnore user: User
+    ): List<FeedResponse> = feedService.getShowAllFeeds(lastFeedId, user)
 
     @ApiOperation(value = "피드 상세 조회")
     @GetMapping("/{feedId}")

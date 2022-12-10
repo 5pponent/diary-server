@@ -5,6 +5,7 @@ import diary.capstone.domain.user.User
 import diary.capstone.domain.user.UserSimpleResponse
 import org.springframework.data.domain.Page
 import org.springframework.web.multipart.MultipartFile
+import java.time.format.DateTimeFormatter
 import javax.validation.constraints.Pattern
 
 data class FeedCreateForm(
@@ -35,15 +36,38 @@ data class FeedUpdateForm(
     var showScope: String
 )
 
+data class FeedResponseM(
+    var id: String,
+    var writer: UserSimpleResponse,
+    var content: String,
+    var images: List<ImageDto>,
+    var commentCount: Int,
+    var likeCount: Int,
+    var isLiked: Boolean,
+    var showScope: String,
+    var createTime: String
+) {
+    constructor(feed: FeedM, writer: UserSimpleResponse, loginUserId: Long): this(
+        id = feed.id.toHexString(),
+        writer = writer,
+        content = feed.content,
+        images = feed.images,
+        commentCount = feed.comments.size,
+        likeCount = feed.likedUsers.size,
+        isLiked = feed.likedUsers.contains(loginUserId),
+        showScope = feed.showScope,
+        createTime = feed.createTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+    )
+}
+
 data class FeedResponse(
     var id: Long,
     var writer: UserSimpleResponse,
     var content: String,
     var files: List<FileResponse>,
-    var commentCount: Int,
-    var likeCount: Int,
+    var commentCount: Long,
+    var likeCount: Long,
     var isLiked: Boolean,
-    var isFollowed: Boolean,
     var showScope: String,
     var createTime: String
 ) {
@@ -54,13 +78,24 @@ data class FeedResponse(
         files = feed.files
             .sortedBy { it.sequence }
             .map { FileResponse(it) },
-        commentCount = feed.comments.size,
+        commentCount = feed.comments.size.toLong(),
         likeCount = feed.likes
-            .count { it.feed.id == feed.id },
+            .count { it.feed.id == feed.id }.toLong(),
         isLiked = feed.likes // 조회하는 유저의 해당 피드 좋아요 유무
             .any { it.feed.id == feed.id && it.user.id == user.id },
-        isFollowed = user.following // 조회하는 유저의 피드 작성자 팔로우 유무
-            .any { it.target.id == feed.writer.id },
+        showScope = feed.showScope,
+        createTime = feed.createTime
+    )
+    constructor(feed: Feed, isFollowed: Boolean, commentCount: Long, likeCount: Long, isLiked: Boolean): this(
+        id = feed.id!!,
+        writer = UserSimpleResponse(feed.writer, isFollowed),
+        content = feed.content,
+        files = feed.files
+            .sortedBy { it.sequence }
+            .map { FileResponse(it) },
+        commentCount = commentCount,
+        likeCount = likeCount,
+        isLiked = isLiked,
         showScope = feed.showScope,
         createTime = feed.createTime
     )
@@ -71,12 +106,6 @@ data class FeedPagedResponse(
     var totalPages: Int,
     var feeds: List<FeedResponse>
 ) {
-    constructor(feeds: Page<Feed>, user: User): this(
-        currentPage = feeds.number + 1,
-        totalPages = feeds.totalPages,
-        feeds = feeds.content
-            .map { FeedResponse(it, user) }
-    )
     constructor(feeds: Page<FeedResponse>): this(
         currentPage = feeds.number + 1,
         totalPages = feeds.totalPages,

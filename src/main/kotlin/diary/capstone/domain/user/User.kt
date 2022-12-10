@@ -47,9 +47,6 @@ class User(
     @JoinColumn(name = "profile_image_id")
     var profileImage: File? = null,
 
-    @OneToMany(mappedBy = "writer", cascade = [CascadeType.ALL], orphanRemoval = true)
-    var feeds: MutableList<Feed> = mutableListOf(),
-
     @OneToMany(mappedBy = "user", cascade = [CascadeType.ALL], orphanRemoval = true)
     var feedLines: MutableList<FeedLine> = mutableListOf(),
 
