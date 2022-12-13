@@ -2,6 +2,8 @@ package diary.capstone.domain.feed
 
 import com.querydsl.core.types.Predicate
 import com.querydsl.jpa.impl.JPAQueryFactory
+import diary.capstone.config.COMMENT_PAGE_SIZE
+import diary.capstone.config.FEED_LIKE_PAGE_SIZE
 import diary.capstone.config.FEED_PAGE_SIZE
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
@@ -14,14 +16,12 @@ import diary.capstone.domain.feed.comment.QComment.comment
 import diary.capstone.domain.feed.comment.QCommentLike.commentLike
 import diary.capstone.domain.user.QUser.user
 import diary.capstone.domain.file.QFile.file
-import diary.capstone.domain.user.QFollow.follow
 import diary.capstone.domain.user.QUserRepository
 import diary.capstone.domain.user.User
 import diary.capstone.domain.user.UserSimpleResponse
 import diary.capstone.util.getPagedObject
 
 interface FeedRepository: JpaRepository<Feed, Long> {
-    fun findByShowScope(pageable: Pageable, showScope: String): Page<Feed>
 }
 
 data class FeedInfo(
@@ -31,6 +31,13 @@ data class FeedInfo(
     var isFollowed: Boolean? = null
 )
 
+data class CommentInfo(
+    var childCount: Long,
+    var likeCount: Long,
+    var isLiked: Boolean,
+    var isFollowed: Boolean
+)
+
 @Repository
 class QFeedRepository(
     private val jpaQueryFactory: JPAQueryFactory,
@@ -38,8 +45,7 @@ class QFeedRepository(
 ) {
 
     /**
-     * @param loginUserId 로그인한 유저 Id
-     * @return 피드의 댓글, 좋아요 개수 및 좋아요 여부 반환
+     * @return 피드의 댓글, 좋아요 개수, 좋아요 여부, 작성자 팔로우 여부 반환
      */
     private fun getFeedInfos(loginUserId: Long, feedIds: List<Long>, writerIds: List<Long>? = null): List<FeedInfo> {
         val commentCount = jpaQueryFactory.select(comment.id.count()).from(feed)
@@ -56,12 +62,10 @@ class QFeedRepository(
 
         val likedFeeds = jpaQueryFactory.selectFrom(feedLike)
             .where(feedLike.user.id.eq(loginUserId), feedLike.feed.id.`in`(feedIds)).fetch()
-            .map { it.feed.id }.toList()
+            .map { it.feed.id!! }
 
         val followedUsers = writerIds?.let {
-            jpaQueryFactory.selectFrom(follow)
-                .where(follow.user.id.eq(loginUserId), follow.target.id.`in`(writerIds)).fetch()
-                .map { it.target.id }.toList()
+            qUserRepository.getIsFollowed(loginUserId, writerIds)
         }
 
         val feedInfos = mutableListOf<FeedInfo>()
@@ -78,17 +82,16 @@ class QFeedRepository(
 
     /**
      * JOIN FETCH: writer, writer.profileImage
-     * @param showScope const [SHOW_ALL | SHOW_FOLLOWERS | SHOW_ME]
-     * @return 해당 공개 범위의 피드 리스트(NoOffset 페이징)
+     * @return 공개 범위가 모두 공개인 피드 목록, Feed.id DESC
      */
-    fun findFeedsByShowScope(showScope: String, loginUser: User, lastFeedId: Long? = null): List<FeedResponse> {
+    fun findShowAllFeeds(loginUser: User, lastId: Long? = null): List<FeedResponse> {
         val feeds = jpaQueryFactory
             .selectFrom(feed).distinct()
             .leftJoin(feed.writer, user).fetchJoin()
             .leftJoin(user.profileImage).fetchJoin()
             .where(
-                lastFeedId?.let { feed.id.lt(it) },
-                feed.showScope.eq(showScope)
+                lastId?.let { feed.id.lt(it) },
+                feed.showScope.eq(SHOW_ALL)
             )
             .orderBy(feed.id.desc())
             .limit(FEED_PAGE_SIZE.toLong())
@@ -103,9 +106,9 @@ class QFeedRepository(
 
     /**
      * JOIN FETCH: writer, writer.profileImage
-     * @return 해당 유저의 피드 페이징 목록, Feed.id DESC
+     * @return 해당 유저가 작성한 피드 목록, Feed.id DESC
      */
-    fun findFeedsByUserId(pageable: Pageable, userId: Long, loginUser: User): Page<FeedResponse> {
+    fun findFeedsByUserId(userId: Long, loginUser: User, lastId: Long? = null): List<FeedResponse> {
         val isFollowed = if (loginUser.id == userId) true else qUserRepository.getIsFollowed(loginUser.id!!, userId)
 
         val expr = feed.writer.id.eq(userId).and(
@@ -120,34 +123,23 @@ class QFeedRepository(
             .selectFrom(feed).distinct()
             .leftJoin(feed.writer, user).fetchJoin()
             .leftJoin(user.profileImage).fetchJoin()
-            .where(expr)
+            .where(expr, lastId?.let { feed.id.lt(it) })
             .orderBy(feed.id.desc())
-            .offset(pageable.offset)
-            .limit(pageable.pageSize.toLong())
+            .limit(FEED_PAGE_SIZE.toLong())
             .fetch()
-
-        val totalSize = jpaQueryFactory
-            .select(feed.count()).from(feed).where(expr).fetchOne()
 
         val feedInfos = getFeedInfos(loginUser.id!!, feeds.map { it.id!! })
 
-        return getPagedObject(
-            pageable,
-            feeds.zip(feedInfos) { feed, feedInfo ->
-                FeedResponse(feed, isFollowed, feedInfo.commentCount, feedInfo.likeCount, feedInfo.isLiked)
-            },
-            totalSize!!
-        )
+        return feeds.zip(feedInfos) { feed, feedInfo ->
+            FeedResponse(feed, isFollowed, feedInfo.commentCount, feedInfo.likeCount, feedInfo.isLiked)
+        }
     }
 
     /**
      * JOIN FETCH: writer, writer.profileImage
-     * @param pageable
-     * @param userId
-     * @param keyword 피드 내용 또는 파일 설명 검색 키워드
-     * @return 검색 결과 피드 페이징 목록, Feed.id DESC
+     * @return 검색 결과 피드 목록, Feed.id DESC
      */
-    fun findFeedsByUserIdAndKeyword(pageable: Pageable, userId: Long, keyword: String, loginUser: User): Page<FeedResponse> {
+    fun findFeedsByUserIdAndKeyword(userId: Long, keyword: String, loginUser: User, lastId: Long? = null): List<FeedResponse> {
         val isFollowed = qUserRepository.getIsFollowed(loginUser.id!!, userId)
 
         val expr = feed.writer.id.eq(userId).and(
@@ -165,27 +157,16 @@ class QFeedRepository(
             .leftJoin(feed.files, file)
             .leftJoin(feed.writer, user).fetchJoin()
             .leftJoin(user.profileImage).fetchJoin()
-            .where(expr)
+            .where(expr, lastId?.let { feed.id.lt(it) })
             .orderBy(feed.id.desc())
-            .offset(pageable.offset)
-            .limit(pageable.pageSize.toLong())
+            .limit(FEED_PAGE_SIZE.toLong())
             .fetch()
-
-        val totalSize = jpaQueryFactory
-            .select(feed.count()).from(feed)
-            .leftJoin(feed.files, file)
-            .where(expr)
-            .fetchOne()
 
         val feedInfos = getFeedInfos(userId, feeds.map { it.id!! })
 
-        return getPagedObject(
-            pageable,
-            feeds.zip(feedInfos) { feed, feedInfo ->
-                FeedResponse(feed, isFollowed, feedInfo.commentCount, feedInfo.likeCount, feedInfo.isLiked)
-            },
-            totalSize!!
-        )
+        return feeds.zip(feedInfos) { feed, feedInfo ->
+            FeedResponse(feed, isFollowed, feedInfo.commentCount, feedInfo.likeCount, feedInfo.isLiked)
+        }
     }
 
     /**
@@ -195,90 +176,139 @@ class QFeedRepository(
         .select(feedLike.count()).from(feedLike).where(feedLike.feed.id.eq(feedId)).fetchFirst()
 
     /**
-     * @return 해당 피드의 좋아요 한 유저 페이징 목록, FeedLike.id ASC
+     * @return 해당 피드의 좋아요 한 유저 목록, FeedLike.id ASC
      */
-    fun findFeedLikeUsers(pageable: Pageable, feedId: Long, loginUser: User): Page<UserSimpleResponse> {
+    fun findFeedLikeUsers(feedId: Long, loginUser: User, lastId: Long? = null): List<UserSimpleResponse> {
         val likedUsers = jpaQueryFactory
             .selectFrom(feedLike).distinct()
             .leftJoin(feedLike.user, user).fetchJoin()
             .leftJoin(user.profileImage).fetchJoin()
-            .where(feedLike.feed.id.eq(feedId))
-            .offset(pageable.offset)
-            .limit(pageable.pageSize.toLong())
+            .where(feedLike.feed.id.eq(feedId), lastId?.let { feedLike.id.lt(it) })
+            .limit(FEED_LIKE_PAGE_SIZE.toLong())
             .fetch()
             .map { it.user }
 
-        return getPagedObject(pageable, likedUsers.map { UserSimpleResponse(it, loginUser) }, getFeedLikeCount(feedId))
+        val followedUserIds = qUserRepository.getIsFollowed(loginUser.id!!, likedUsers.map { it.id!! })
+
+        return likedUsers.map { UserSimpleResponse(it, followedUserIds.contains(it.id)) }
     }
 
     /**
-     * @param expr QueryDSL where 절에 들어갈 표현식
-     * @return 해당 expr 에 대한 댓글 수(Long)
+     * @return 댓글의 대댓글 개수, 좋아요 수, 좋아요 여부, 작성자 팔로우 여부 반환
      */
-    fun getCommentCount(expr: Predicate): Long = jpaQueryFactory
-        .select(comment.count()).from(comment).where(expr).fetchOne()!!
+    private fun getCommentInfos(loginUserId: Long, commentIds: List<Long>, writerIds: List<Long>): MutableList<CommentInfo> {
+        val childCount = jpaQueryFactory.select(comment.parent.id, comment.count()).from(comment)
+            .groupBy(comment.parent.id).having(comment.parent.id.`in`(commentIds))
+            .orderBy(comment.parent.id.desc())
+            .fetch().associate { Pair(it[comment.parent.id], it[comment.count()]) }
+            .let { result ->
+                commentIds.map { result[it] ?: 0L }
+            }
+
+        val likeCount = jpaQueryFactory.select(commentLike.count()).from(comment)
+            .leftJoin(commentLike).on(comment.id.eq(commentLike.comment.id))
+            .groupBy(comment.id).having(comment.id.`in`(commentIds))
+            .orderBy(comment.id.desc())
+            .fetch()
+
+        val likedComments = jpaQueryFactory.selectFrom(commentLike)
+            .where(commentLike.user.id.eq(loginUserId), commentLike.comment.id.`in`(commentIds)).fetch()
+            .map { it.comment.id!! }
+
+        val followedUsers = qUserRepository.getIsFollowed(loginUserId, writerIds)
+
+        val commentInfos = mutableListOf<CommentInfo>()
+        var idx = 0
+        commentIds.forEach { cId ->
+            commentInfos.add(
+                CommentInfo(childCount[idx], likeCount[idx], likedComments.contains(cId), followedUsers.contains(cId))
+            )
+            idx++
+        }
+        return commentInfos
+    }
 
     /**
      * JOIN FETCH: writer, writer.profileImage
-     * @return 해당 피드의 루트 댓글 페이징 목록, Comment.id DESC
+     * @return 해당 피드의 루트 댓글 목록, Comment.id DESC
      */
-    fun findRootCommentsByFeedId(pageable: Pageable, feedId: Long, loginUser: User): Page<CommentResponse> {
+    fun findRootCommentsByFeedId(feedId: Long, loginUser: User, lastId: Long? = null): List<CommentResponse> {
         val expr = comment.feed.id.eq(feedId).and(comment.parent.isNull)
 
         val comments = jpaQueryFactory
             .selectFrom(comment).distinct()
             .leftJoin(comment.writer, user).fetchJoin()
             .leftJoin(user.profileImage).fetchJoin()
-            .where(expr)
+            .where(expr, lastId?.let { comment.id.lt(it) })
             .orderBy(comment.id.desc())
-            .offset(pageable.offset)
-            .limit(pageable.pageSize.toLong())
+            .limit(COMMENT_PAGE_SIZE.toLong())
             .fetch()
 
-        return getPagedObject(pageable, comments.map { CommentResponse(it, loginUser) }, getCommentCount(expr))
+        val commentInfos = getCommentInfos(loginUser.id!!, comments.map { it.id!! }, comments.map { it.writer.id!! })
+
+        return comments.zip(commentInfos) { comment, commentInfo ->
+            CommentResponse(
+                comment, commentInfo.isFollowed, commentInfo.childCount, commentInfo.likeCount, commentInfo.isLiked
+            )
+        }
     }
 
     /**
      * JOIN FETCH: writer, writer.profileImage
-     * @return 해당 피드의 특정 유저의 루트 댓글 페이징 목록, Comment.id DESC
+     * @return 해당 피드의 특정 유저의 루트 댓글 목록, Comment.id DESC
      */
-    fun findRootCommentsByFeedIdAndUserId(pageable: Pageable, feedId: Long, userId: Long, loginUser: User): Page<CommentResponse> {
+    fun findRootCommentsByFeedIdAndUserId(feedId: Long, userId: Long, loginUser: User, lastId: Long? = null): List<CommentResponse> {
         val expr = comment.feed.id.eq(feedId).and(comment.parent.isNull).and(comment.writer.id.eq(userId))
 
         val comments = jpaQueryFactory
             .selectFrom(comment).distinct()
             .leftJoin(comment.writer, user).fetchJoin()
             .leftJoin(user.profileImage).fetchJoin()
-            .where(expr)
+            .where(expr, lastId?.let { comment.id.lt(it) })
             .orderBy(comment.id.desc())
-            .offset(pageable.offset)
-            .limit(pageable.pageSize.toLong())
+            .limit(COMMENT_PAGE_SIZE.toLong())
             .fetch()
 
-        return getPagedObject(pageable, comments.map { CommentResponse(it, loginUser) }, getCommentCount(expr))
+        val commentInfos = getCommentInfos(loginUser.id!!, comments.map { it.id!! }, comments.map { it.writer.id!! })
+
+        return comments.zip(commentInfos) { comment, commentInfo ->
+            CommentResponse(
+                comment, commentInfo.isFollowed, commentInfo.childCount, commentInfo.likeCount, commentInfo.isLiked
+            )
+        }
     }
 
     /**
      * JOIN FETCH: writer, writer.profileImage
-     * @return 해당 댓글의 대댓글 페이징 목록, Comment.id DESC
+     * @return 해당 댓글의 대댓글 목록, Comment.id DESC
      */
-    fun findChildCommentsByParentCommentId(pageable: Pageable, commentId: Long, loginUser: User): Page<CommentResponse> {
+    fun findChildCommentsByParentCommentId(commentId: Long, loginUser: User, lastId: Long? = null): List<CommentResponse> {
         val expr = comment.parent.id.eq(commentId)
 
         val comments = jpaQueryFactory
             .selectFrom(comment).distinct()
             .leftJoin(comment.writer, user).fetchJoin()
             .leftJoin(user.profileImage).fetchJoin()
-            .where(expr)
+            .where(expr, lastId?.let { comment.id.lt(it) })
             .orderBy(comment.id.desc())
-            .offset(pageable.offset)
-            .limit(pageable.pageSize.toLong())
+            .limit(COMMENT_PAGE_SIZE.toLong())
             .fetch()
 
-        val totalSize = getCommentCount(expr)
+        val commentInfos = getCommentInfos(loginUser.id!!, comments.map { it.id!! }, comments.map { it.writer.id!! })
 
-        return getPagedObject(pageable, comments.map { CommentResponse(it, loginUser) }, totalSize)
+        return comments.zip(commentInfos) { comment, commentInfo ->
+            CommentResponse(
+                comment, commentInfo.isFollowed, commentInfo.childCount, commentInfo.likeCount, commentInfo.isLiked
+            )
+        }
     }
+
+    /**
+     * @param expr QueryDSL where clause에 들어갈 표현식
+     * @return 해당 expr 에 대한 댓글 수(Long)
+     */
+    fun getCommentCount(expr: Predicate): Long = jpaQueryFactory
+        .select(comment.count()).from(comment).where(expr).fetchFirst()
 
     /**
      * @return 해당 댓글의 좋아요 수(Long)

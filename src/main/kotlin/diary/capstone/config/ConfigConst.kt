@@ -24,6 +24,7 @@ const val FEEDLINE_CATEGORY_LIMIT = 5
 
 // 페이지당 표시 할 데이터 개수
 const val FEED_PAGE_SIZE = 10
+const val FEED_LIKE_PAGE_SIZE = 10
 const val COMMENT_PAGE_SIZE = 10
 
 // 정적 리소스 캐싱 시간(분)

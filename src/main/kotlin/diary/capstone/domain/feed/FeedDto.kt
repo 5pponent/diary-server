@@ -3,7 +3,6 @@ package diary.capstone.domain.feed
 import diary.capstone.domain.file.FileResponse
 import diary.capstone.domain.user.User
 import diary.capstone.domain.user.UserSimpleResponse
-import org.springframework.data.domain.Page
 import org.springframework.web.multipart.MultipartFile
 import java.time.format.DateTimeFormatter
 import javax.validation.constraints.Pattern
@@ -35,30 +34,6 @@ data class FeedUpdateForm(
     )
     var showScope: String
 )
-
-data class FeedResponseM(
-    var id: String,
-    var writer: UserSimpleResponse,
-    var content: String,
-    var images: List<ImageDto>,
-    var commentCount: Int,
-    var likeCount: Int,
-    var isLiked: Boolean,
-    var showScope: String,
-    var createTime: String
-) {
-    constructor(feed: FeedM, writer: UserSimpleResponse, loginUserId: Long): this(
-        id = feed.id.toHexString(),
-        writer = writer,
-        content = feed.content,
-        images = feed.images,
-        commentCount = feed.comments.size,
-        likeCount = feed.likedUsers.size,
-        isLiked = feed.likedUsers.contains(loginUserId),
-        showScope = feed.showScope,
-        createTime = feed.createTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
-    )
-}
 
 data class FeedResponse(
     var id: Long,
@@ -98,17 +73,5 @@ data class FeedResponse(
         isLiked = isLiked,
         showScope = feed.showScope,
         createTime = feed.createTime
-    )
-}
-
-data class FeedPagedResponse(
-    var currentPage: Int,
-    var totalPages: Int,
-    var feeds: List<FeedResponse>
-) {
-    constructor(feeds: Page<FeedResponse>): this(
-        currentPage = feeds.number + 1,
-        totalPages = feeds.totalPages,
-        feeds = feeds.content
     )
 }

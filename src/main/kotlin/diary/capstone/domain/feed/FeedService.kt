@@ -3,11 +3,13 @@ package diary.capstone.domain.feed
 import diary.capstone.domain.feed.comment.Comment
 import diary.capstone.domain.feed.comment.CommentLike
 import diary.capstone.domain.feed.comment.CommentRequestForm
+import diary.capstone.domain.feed.comment.CommentResponse
 import diary.capstone.domain.file.FileService
 import diary.capstone.domain.notice.NoticeRequest
 import diary.capstone.domain.notice.NoticeService
 import diary.capstone.domain.user.User
-import diary.capstone.domain.user.UserService
+import diary.capstone.domain.user.UserPagedResponse
+import diary.capstone.domain.user.UserSimpleResponse
 import diary.capstone.util.*
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
@@ -20,7 +22,6 @@ import org.springframework.web.multipart.MultipartFile
 class FeedService(
     private val feedRepository: FeedRepository,
     private val qFeedRepository: QFeedRepository,
-    private val userService: UserService,
     private val fileService: FileService,
     private val noticeService: NoticeService
 ) {
@@ -63,15 +64,15 @@ class FeedService(
 
     // 전체 공개 피드 조회
     @Transactional(readOnly = true)
-    fun getShowAllFeeds(lastFeedId: Long?, loginUser: User) =
-        qFeedRepository.findFeedsByShowScope(SHOW_ALL, loginUser, lastFeedId)
+    fun getShowAllFeeds(loginUser: User, lastId: Long? = null) =
+        qFeedRepository.findShowAllFeeds(loginUser, lastId)
 
     // 피드 목록 검색 (페이징)
     @Transactional(readOnly = true)
-    fun getFeeds(pageable: Pageable, userId: Long, keyword: String?, loginUser: User): Page<FeedResponse> =
+    fun getFeeds(userId: Long, keyword: String?, loginUser: User, lastId: Long? = null): List<FeedResponse> =
         keyword?.let {
-            qFeedRepository.findFeedsByUserIdAndKeyword(pageable, userId, keyword, loginUser)
-        } ?: qFeedRepository.findFeedsByUserId(pageable, userId, loginUser)
+            qFeedRepository.findFeedsByUserIdAndKeyword(userId, keyword, loginUser, lastId)
+        } ?: qFeedRepository.findFeedsByUserId(userId, loginUser, lastId)
 
     // 피드 하나의 상세 정보
     @Transactional(readOnly = true)
@@ -79,8 +80,8 @@ class FeedService(
         feedRepository.findById(feedId).orElseThrow { throw FeedException(FEED_NOT_FOUND) }
 
     @Transactional(readOnly = true)
-    fun getFeedLikes(pageable: Pageable, feedId: Long): List<User> =
-        getFeed(feedId).let { feed -> feed.likes.map { it.user } }
+    fun getFeedLikes(feedId: Long, loginUser: User, lastId: Long? = null): List<UserSimpleResponse> =
+        qFeedRepository.findFeedLikeUsers(feedId, loginUser, lastId)
 
     // 피드 좋아요 등록
     fun likeFeed(feedId: Long, loginUser: User): Feed =
@@ -98,7 +99,6 @@ class FeedService(
                     )
                 )
             }
-
             feed
         }
 
@@ -222,32 +222,13 @@ class FeedService(
      */
     // 모든 루트 댓글 조회 (부모 댓글 x, 로그인한 유저가 쓴 댓글 제외)
     @Transactional(readOnly = true)
-    fun getRootComments(feedId: Long, pageable: Pageable, loginUser: User): Page<Comment> =
-        getPagedObject(pageable,
-            getFeed(feedId).comments
-                .filterRootComments()
-                .filterNotSpecificUserComments(loginUser.id!!)
-                .sortedByDescending { it.id }
-        )
+    fun getRootComments(feedId: Long, loginUser: User, lastId: Long? = null): List<CommentResponse> =
+        qFeedRepository.findRootCommentsByFeedId(feedId, loginUser, lastId)
 
-    // 해당 피드의 내가 쓴 루트 댓글만 조회 (부모 댓글 x, 로그인한 유저가 쓴 댓글만)
+    // 해당 댓글의 대댓글들 조회 (해당 댓글의 대댓글들만)
     @Transactional(readOnly = true)
-    fun getMyComments(feedId: Long, pageable: Pageable, loginUser: User): Page<Comment> =
-        getPagedObject(pageable,
-            getFeed(feedId).comments
-                .filterRootComments()
-                .filterSpecificUserComments(loginUser.id!!)
-                .sortedBy { it.id }
-        )
-
-    // 해당 댓글의 대댓글들 조회 (해당 댓글의 자식 댓글들만)
-    @Transactional(readOnly = true)
-    fun getChildComments(feedId: Long, commentId: Long, pageable: Pageable): Page<Comment> =
-        getPagedObject(pageable,
-            getFeed(feedId).comments
-                .filterChildComments(commentId)
-                .sortedBy { it.id }
-        )
+    fun getChildComments(feedId: Long, commentId: Long, loginUser: User, lastId: Long? = null): List<CommentResponse> =
+        qFeedRepository.findChildCommentsByParentCommentId(commentId, loginUser, lastId)
 
     // 댓글 수정
     fun updateComment(feedId: Long, commentId: Long, form: CommentRequestForm, loginUser: User): Comment =

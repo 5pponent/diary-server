@@ -1,16 +1,13 @@
 package diary.capstone.domain.feed
 
 import diary.capstone.auth.Auth
-import diary.capstone.config.FEED_PAGE_SIZE
 import diary.capstone.domain.feed.comment.CommentPagedResponse
 import diary.capstone.domain.feed.comment.CommentRequestForm
 import diary.capstone.domain.feed.comment.CommentResponse
 import diary.capstone.domain.user.User
+import diary.capstone.domain.user.UserPagedResponse
 import diary.capstone.domain.user.UserSimpleResponse
 import io.swagger.annotations.ApiOperation
-import org.springframework.data.domain.Pageable
-import org.springframework.data.domain.Sort
-import org.springframework.data.web.PageableDefault
 import org.springframework.web.bind.annotation.*
 import springfox.documentation.annotations.ApiIgnore
 import javax.validation.Valid
@@ -37,17 +34,17 @@ class FeedController(private val feedService: FeedService) {
     )
     @GetMapping
     fun getFeeds(
-        @PageableDefault(sort = ["id"], size = FEED_PAGE_SIZE) pageable: Pageable,
         @RequestParam(name = "userid") userId: Long,
         @RequestParam(name = "keyword", required = false) keyword: String?,
+        @RequestParam(name = "lastId", required = false) lastId: Long?,
         @ApiIgnore user: User
-    ) = FeedPagedResponse(feedService.getFeeds(pageable, userId, keyword, user))
+    ): List<FeedResponse> = feedService.getFeeds(userId, keyword, user)
 
     @GetMapping("/all")
     fun getShowAllFeeds(
-        @RequestParam(name = "lastFeedId", required = false) lastFeedId: Long?,
+        @RequestParam(name = "lastId", required = false) lastId: Long?,
         @ApiIgnore user: User
-    ): List<FeedResponse> = feedService.getShowAllFeeds(lastFeedId, user)
+    ): List<FeedResponse> = feedService.getShowAllFeeds(user, lastId)
 
     @ApiOperation(value = "피드 상세 조회")
     @GetMapping("/{feedId}")
@@ -91,32 +88,22 @@ class CommentController(private val feedService: FeedService) {
         @ApiIgnore user: User
     ) = CommentResponse(feedService.createChildComment(feedId, commentId, form, user), user)
 
-    @ApiOperation(
-        value = "해당 피드의 루트 댓글만 조회", 
-        notes = "user 파라미터가 me 일 경우 내 루트 댓글만 조회\n " +
-                "user 파라미터를 포함하지 않을 경우 다른 유저들의 루트 댓글 조회"
-    )
+    @ApiOperation(value = "해당 피드의 루트 댓글만 조회",)
     @GetMapping
     fun getRootComments(
         @PathVariable("feedId") feedId: Long,
-        @RequestParam(name = "user", required = false) user: String?,
-        @PageableDefault pageable: Pageable,
+        @RequestParam(name = "lastId", required = false) lastId: Long?,
         @ApiIgnore loginUser: User
-    ) = CommentPagedResponse(
-            when (user) {
-                "me" -> feedService.getMyComments(feedId, pageable, loginUser)
-                else -> feedService.getRootComments(feedId, pageable, loginUser)
-            }, loginUser
-        )
+    ): List<CommentResponse> = feedService.getRootComments(feedId, loginUser, lastId)
 
     @ApiOperation(value = "해당 댓글의 대댓글 목록 조회")
     @GetMapping("/{commentId}")
     fun getChildComments(
         @PathVariable("feedId") feedId: Long,
         @PathVariable("commentId") commentId: Long,
-        @PageableDefault pageable: Pageable,
+        @RequestParam(name = "lastId", required = false) lastId: Long?,
         @ApiIgnore user: User
-    ) = CommentPagedResponse(feedService.getChildComments(feedId, commentId, pageable), user)
+    ): List<CommentResponse> = feedService.getChildComments(feedId, commentId, user, lastId)
 
     @ApiOperation(value = "댓글 수정")
     @PutMapping("/{commentId}")
@@ -145,10 +132,10 @@ class FeedLikeController(private val feedService: FeedService) {
     @ApiOperation(value = "해당 피드를 좋아요한 유저 목록")
     @GetMapping
     fun getFeedLikeUsers(
-        @PageableDefault pageable: Pageable,
         @PathVariable("feedId") feedId: Long,
+        @RequestParam(name = "lastId", required = false) lastId: Long?,
         @ApiIgnore user: User
-    ) = feedService.getFeedLikes(pageable, feedId).map { UserSimpleResponse(it, user) }
+    ): List<UserSimpleResponse> = feedService.getFeedLikes(feedId, user, lastId)
 
     @ApiOperation(value = "해당 피드 좋아요 등록")
     @PostMapping

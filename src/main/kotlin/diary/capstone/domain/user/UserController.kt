@@ -3,8 +3,6 @@ package diary.capstone.domain.user
 import diary.capstone.auth.Auth
 import diary.capstone.config.INTERESTS_LIMIT
 import diary.capstone.config.PASSWORD_CREATE_POLICY
-import diary.capstone.domain.feed.FeedPagedResponse
-import diary.capstone.domain.feed.FeedService
 import io.swagger.annotations.ApiOperation
 import org.springframework.data.domain.Pageable
 import org.springframework.data.web.PageableDefault
@@ -72,7 +70,6 @@ class LoginController(private val loginService: LoginService) {
 @RequestMapping("/user")
 class UserController(
     private val userService: UserService,
-    private val feedService: FeedService,
     private val passwordEncoder: PasswordEncoder
 ) {
     @ApiOperation(value = "유저 정보 조회/유저 검색")
@@ -84,15 +81,6 @@ class UserController(
     ) = keyword?.let {
         UserPagedResponse(userService.searchUser(pageable, it), user)
     } ?: UserDetailResponse(user, user)
-
-    @ApiOperation(value = "특정 유저의 피드 조회")
-    @GetMapping("/{userId}/feed")
-    fun searchUserFeed(
-        @PageableDefault pageable: Pageable,
-        @PathVariable("userId") userId: Long,
-        @RequestParam(name = "keyword", required = true) keyword: String,
-        @ApiIgnore user: User
-    ) = FeedPagedResponse(feedService.searchFeedsByUserAndKeyword(pageable, userId, keyword), user)
 
     @ApiOperation(value = "특정 유저의 유저 정보 조회")
     @GetMapping("/{userId}")

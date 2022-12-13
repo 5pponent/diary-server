@@ -217,7 +217,7 @@ class UserService(
     // TODO 추후에 아예 삭제할지, 유예 기간을 설정할지 생각해봐야됨
     fun deleteUser(form: UserDeleteForm, loginUser: User) {
         loginUser.profileImage?.let { fileService.deleteFile(it) }
-        loginUser.feeds.forEach { feed -> feed.files.forEach { fileService.deleteFile(it) } }
+        // TODO 피드, 댓글, 피드좋아요, 댓글좋아요 삭제 로직
         userRepository.delete(loginUser)
     }
 }

@@ -40,9 +40,20 @@ class QUserRepository(private val jpaQueryFactory: JPAQueryFactory) {
         .where(user.email.eq(email))
         .fetchOne()
 
+    /**
+     * @return userId가 targetUserId를 팔로우중인지 여부
+     */
     fun getIsFollowed(userId: Long, targetUserId: Long): Boolean = jpaQueryFactory.selectFrom(follow)
         .where(follow.user.id.eq(userId), follow.target.id.eq(targetUserId))
         .fetchOne()?.let { true } ?: false
+
+    /**
+     * @return targetUserIds의 유저들 중 팔로우중인 유저 ID만 담긴 List 반환
+     */
+    fun getIsFollowed(userId: Long, targetUserIds: List<Long>): List<Long> =
+        jpaQueryFactory.selectFrom(follow)
+            .where(follow.user.id.eq(userId), follow.target.id.`in`(targetUserIds)).fetch()
+            .map { it.target.id!! }.toList()
 
     /**
      * @param userId 대상 유저 ID

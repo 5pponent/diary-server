@@ -3,7 +3,6 @@ package diary.capstone.domain.feed
 import com.querydsl.jpa.impl.JPAQueryFactory
 import diary.capstone.domain.feed.comment.CommentResponse
 import diary.capstone.domain.user.UserService
-import org.bson.types.ObjectId
 import org.junit.jupiter.api.Test
 
 import org.junit.jupiter.api.Assertions.*
@@ -13,9 +12,6 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.transaction.annotation.Transactional
-import java.sql.Timestamp
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.*
 
 @SpringBootTest
@@ -23,6 +19,7 @@ import java.util.*
 internal class FeedServiceTest {
 
     @Autowired lateinit var userService: UserService
+    @Autowired lateinit var feedService: FeedService
     @Autowired lateinit var qFeedRepository: QFeedRepository
     @Autowired lateinit var jpaQueryFactory: JPAQueryFactory
 
@@ -32,11 +29,8 @@ internal class FeedServiceTest {
      * - select Follow from Follow following where following.user_id = 로그인 유저 ID;
      * - 피드 페이징 목록: 2(페이징) + 1(following) + 1(files) + 1(likes) + 1(comments) = 6개 쿼리가 실행
      */
-    private fun feedTestResult(feedList: Page<FeedResponse>) {
-        println("currentPage: " + (feedList.number + 1))
-        println("totalPages: " + feedList.totalPages)
-        println("totalElements: " + feedList.totalElements)
-        feedList.content.forEach {
+    private fun feedTestResult(feedList: List<FeedResponse>) {
+        feedList.forEach {
             println("Feed (${it.id}) =====================================================")
             println("files: ${it.files.map { file -> file.id }}")
             println("likeCount: ${it.likeCount}")
@@ -52,15 +46,11 @@ internal class FeedServiceTest {
      * - select Follow from Follow following where following.user_id = 로그인 유저 ID;
      * - 댓글 페이징 목록: 2(페이징) + 1(following) + 1(children) + 1(likes) = 5개 쿼리 실행
      */
-    private fun commentTestResult(commentList: Page<CommentResponse>) {
-        println("currentPage: " + (commentList.number + 1))
-        println("totalPages: " + commentList.totalPages)
-        println("totalElements: " + commentList.totalElements)
-        commentList.content.forEach {
+    private fun commentTestResult(commentList: List<CommentResponse>) {
+        commentList.forEach {
             println("Comment (${it.id}) =====================================================")
             println(it.content)
             println("childCount = ${it.childCount}")
-            println("isFollowed = ${it.isFollowed}")
             println("isLiked = ${it.isLiked}")
             println("likeCount = ${it.likeCount}")
             println("parentId = ${it.parentId}")
@@ -70,8 +60,7 @@ internal class FeedServiceTest {
     @Test @DisplayName("특정 유저의 피드 페이징 조회")
     fun getUserFeeds() {
         val loginUser = userService.getUserById(1L)
-        val pageable = PageRequest.of(0, 10)
-        val result = qFeedRepository.findFeedsByUserId(pageable, 6L, loginUser)
+        val result = qFeedRepository.findFeedsByUserId(6L, loginUser)
 
         feedTestResult(result)
     }
@@ -79,7 +68,7 @@ internal class FeedServiceTest {
     @Test @DisplayName("전체 공개 피드 모두 조회 - NoOffset")
     fun getFeedsAll() {
         val loginUser = userService.getUserById(6L)
-        val result = qFeedRepository.findFeedsByShowScope(SHOW_ALL, loginUser)
+        val result = qFeedRepository.findShowAllFeeds(loginUser)
         println("${result.size} rows paged")
         result.forEach { println("${it.id} | ${it.writer}") }
     }
@@ -88,8 +77,7 @@ internal class FeedServiceTest {
     fun searchFeedsByUserAndKeyword() {
         val loginUser = userService.getUserById(1L)
         val keyword = "저"
-        val pageable = PageRequest.of(0, 2)
-        val result = qFeedRepository.findFeedsByUserIdAndKeyword(pageable, loginUser.id!!, keyword, loginUser)
+        val result = qFeedRepository.findFeedsByUserIdAndKeyword(loginUser.id!!, keyword, loginUser)
 
         feedTestResult(result)
     }
@@ -98,9 +86,7 @@ internal class FeedServiceTest {
     fun getFeedLikes() {
         val loginUser = userService.getUserById(1L)
         val feedId = 1L
-        val pageable = PageRequest.of(0, 3)
-        val likedUsers = qFeedRepository.findFeedLikeUsers(pageable, feedId, loginUser)
-        println("피드 좋아요 수: ${likedUsers.totalElements}")
+        val likedUsers = qFeedRepository.findFeedLikeUsers(feedId, loginUser)
 
         // FeedLike 페이징 쿼리 2개 + 로그인 유저의 following 쿼리 1개 = 3개 쿼리 실행
         likedUsers.forEach { println(it.name + ": " + it.image?.source) }
@@ -110,8 +96,7 @@ internal class FeedServiceTest {
     fun getRootComments() {
         val loginUser = userService.getUserById(1L)
         val feedId = 193L
-        val pageable = PageRequest.of(0, 10)
-        val result = qFeedRepository.findRootCommentsByFeedId(pageable, feedId, loginUser)
+        val result = qFeedRepository.findRootCommentsByFeedId(feedId, loginUser)
 
         commentTestResult(result)
     }
@@ -120,8 +105,7 @@ internal class FeedServiceTest {
     fun getMyComments() {
         val loginUser = userService.getUserById(1L)
         val feedId = 139L
-        val pageable = PageRequest.of(0, 1)
-        val result = qFeedRepository.findRootCommentsByFeedIdAndUserId(pageable, feedId, loginUser.id!!, loginUser)
+        val result = qFeedRepository.findRootCommentsByFeedIdAndUserId(feedId, loginUser.id!!, loginUser)
 
         commentTestResult(result)
     }
@@ -130,8 +114,7 @@ internal class FeedServiceTest {
     fun getChildComments() {
         val loginUser = userService.getUserById(1L)
         val commentId = 224L
-        val pageable = PageRequest.of(0, 1)
-        val result = qFeedRepository.findChildCommentsByParentCommentId(pageable, commentId, loginUser)
+        val result = qFeedRepository.findChildCommentsByParentCommentId(commentId, loginUser)
 
         commentTestResult(result)
     }
